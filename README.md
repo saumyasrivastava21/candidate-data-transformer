@@ -1179,17 +1179,11 @@ pytest
 
 ---
 
-## Submission Contents
+## Demo
 
-Final submission should include:
-
-- Public GitHub repository link
-- One-page design PDF
-- README with exact run steps
-- Produced output on sample inputs
-- Tests
-- Demo video link
-- Assumptions and descoped items
+- 📹 Demo Video: https://drive.google.com/file/d/1c0lN_JighrJGTVQBFT7RwAC2E87jmoWP/view?usp=sharing
+- 🧪 Test Results: tests/
+- 🚀 Sample Outputs: sample_outputs/
 
 ---
 
