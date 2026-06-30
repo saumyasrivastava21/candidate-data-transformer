@@ -1,0 +1,51 @@
+{
+  "fields": [
+    {
+      "path": "candidate_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "path": "full_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "path": "primary_email",
+      "from": "emails[0]",
+      "type": "string",
+      "required": true
+    },
+    {
+      "path": "primary_phone",
+      "from": "phones[0]",
+      "type": "string",
+      "required": false
+    },
+    {
+      "path": "current_company",
+      "type": "string",
+      "required": false
+    },
+    {
+      "path": "current_title",
+      "type": "string",
+      "required": false
+    },
+    {
+      "path": "skills",
+      "from": "skills[].name",
+      "type": "string[]",
+      "required": false
+    },
+    {
+      "path": "confidence",
+      "from": "global_confidence.score",
+      "type": "number",
+      "required": false
+    }
+  ],
+  "include_confidence": false,
+  "include_provenance": false,
+  "on_missing": "null"
+}

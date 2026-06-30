@@ -1,35 +1,80 @@
-# Multi-Source Candidate Data Transformer
+# Candidate Data Transformer
 
-This project converts messy candidate data from multiple sources into one clean canonical candidate profile.
+A production-style candidate data transformation pipeline.
 
-## Problem
+This project ingests messy candidate data from multiple sources and produces one clean, validated JSON output.
 
-Recruiting systems receive candidate information from CSV files, ATS JSON blobs, resumes, GitHub profiles, LinkedIn profiles, and recruiter notes.
+---
 
-These sources can be incomplete, conflicting, duplicated, malformed, or unstructured.
+## Problem Statement
 
-## Goal
+Recruiting systems receive candidate information from many places:
 
-Generate one trustworthy canonical candidate profile with:
+- Recruiter CSV files
+- ATS JSON exports
+- Recruiter notes
+- Resume text/PDF
+- External profiles
 
-- normalized fields
-- confidence scores
+These sources can be incomplete, duplicated, inconsistent, or conflicting.
+
+The goal is to transform all available candidate data into a single canonical profile with:
+
+- source detection
+- extraction
+- normalization
+- deduplication
+- conflict resolution
+- confidence scoring
 - provenance tracking
-- configurable output schema
+- configurable output projection
+- output validation
 
-## Phase 0
+---
 
-Current features:
+## Supported Sources
 
-- CLI setup using Typer
-- sample input files
-- sample custom config
-- output directory
-- health command
-- dummy pipeline execution
+This implementation supports:
 
-## Setup
+| Source | Type | File |
+|---|---|---|
+| Recruiter CSV | Structured | `data/inputs/recruiter.csv` |
+| ATS JSON | Structured | `data/inputs/ats.json` |
+| Recruiter Notes | Unstructured text | `data/inputs/notes.txt` |
 
-```bash
-conda activate candidate-transformer
-pip install -r requirements.txt
+---
+
+## Architecture
+
+```txt
+Raw Input Files
+        |
+        v
+ParserService
+        |
+        v
+CandidateFragment[]
+        |
+        v
+NormalizationService
+        |
+        v
+Normalized CandidateFragment[]
+        |
+        v
+MergeService
+        |
+        v
+CandidateProfile
+        |
+        v
+ProjectionService
+        |
+        v
+Projected JSON
+        |
+        v
+OutputValidator
+        |
+        v
+Final JSON Output

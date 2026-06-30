@@ -1,0 +1,13 @@
+{
+  "fields": [
+    {
+      "path": "missing_required_field",
+      "from": "linkedin.url",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "include_confidence": false,
+  "include_provenance": false,
+  "on_missing": "error"
+}
