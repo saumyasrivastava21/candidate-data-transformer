@@ -6,16 +6,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from app.models.candidate import (
-    CandidateProfile,
-    Confidence,
-    Email,
-    FieldValue,
-    Phone,
-    Provenance,
-    Skill,
-    SourceType,
-)
+from app.models.candidate import CandidateProfile, Confidence, Email, FieldValue, Phone, Skill
+from app.services.merge_service import MergeService
+from app.services.normalization_service import NormalizationService
 from app.services.parser_service import ParserService
 from app.settings import CONFIG_DIR, DEFAULT_OUTPUT_PATH, INPUT_DIR, OUTPUT_DIR
 from app.validators.candidate_validator import collect_validation_errors
@@ -36,10 +29,6 @@ def health():
 def parse_sources(
     input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
 ):
-    """
-    Parse raw input files into CandidateFragment objects.
-    """
-
     parser_service = ParserService()
     fragments = parser_service.parse_input_directory(input_dir)
 
@@ -67,63 +56,79 @@ def parse_sources(
 
 
 @app.command()
+def normalize_sources(
+    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
+):
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+
+    fragments = parser_service.parse_input_directory(input_dir)
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+
+    console.print("[green]Sources parsed and normalized successfully.[/green]")
+
+    table = Table(title="Normalized Candidate Fragments")
+    table.add_column("Source")
+    table.add_column("Emails")
+    table.add_column("Phones")
+    table.add_column("Skills")
+
+    for fragment in normalized_fragments:
+        table.add_row(
+            fragment.source.value,
+            ", ".join(email.value for email in fragment.emails),
+            ", ".join(phone.value for phone in fragment.phones),
+            ", ".join(skill.value for skill in fragment.skills),
+        )
+
+    console.print(table)
+
+
+@app.command()
+def merge_sources(
+    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
+):
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+
+    fragments = parser_service.parse_input_directory(input_dir)
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
+
+    console.print("[green]Sources parsed, normalized, and merged successfully.[/green]")
+
+    table = Table(title="Merged Candidate Profile")
+    table.add_column("Field")
+    table.add_column("Value")
+
+    table.add_row("Candidate ID", candidate.candidate_id or "")
+    table.add_row("Name", candidate.full_name.value if candidate.full_name else "")
+    table.add_row("Emails", ", ".join(email.value for email in candidate.emails))
+    table.add_row("Phones", ", ".join(phone.value for phone in candidate.phones))
+    table.add_row("Company", candidate.current_company.value if candidate.current_company else "")
+    table.add_row("Title", candidate.current_title.value if candidate.current_title else "")
+    table.add_row("Skills", ", ".join(skill.value for skill in candidate.skills))
+    table.add_row("Global Confidence", str(candidate.global_confidence.score))
+
+    console.print(table)
+
+
+@app.command()
 def sample_model():
     candidate = CandidateProfile(
         candidate_id="cand_001",
-        full_name=FieldValue(
-            value="Saumya Srivastava",
-            confidence=Confidence(score=0.98, reason="Name found in recruiter CSV and ATS JSON"),
-            provenance=[
-                Provenance(
-                    source=SourceType.RECRUITER_CSV,
-                    source_file="recruiter.csv",
-                    field_path="name",
-                    extraction_method="csv_column_mapping",
-                    raw_value="Saumya Srivastava",
-                )
-            ],
-        ),
-        emails=[
-            Email(
-                value="SAUMYA@example.com",
-                confidence=Confidence(score=0.99, reason="Email from structured CSV"),
-                provenance=[
-                    Provenance(
-                        source=SourceType.RECRUITER_CSV,
-                        source_file="recruiter.csv",
-                        field_path="email",
-                        extraction_method="csv_column_mapping",
-                        raw_value="SAUMYA@example.com",
-                    )
-                ],
-            )
-        ],
-        phones=[
-            Phone(
-                value="91 9876543210",
-                confidence=Confidence(score=0.85, reason="Phone from recruiter CSV"),
-                provenance=[
-                    Provenance(
-                        source=SourceType.RECRUITER_CSV,
-                        source_file="recruiter.csv",
-                        field_path="phone",
-                        extraction_method="csv_column_mapping",
-                        raw_value="+91 9876543210",
-                    )
-                ],
-            )
-        ],
-        current_company=FieldValue(value="OralVis Healthcare"),
-        current_title=FieldValue(value="AI Research Intern"),
+        full_name=FieldValue(value="Saumya Srivastava"),
+        emails=[Email(value="SAUMYA@example.com")],
+        phones=[Phone(value="91 9876543210")],
         skills=[
-            Skill(value="Python", confidence=Confidence(score=0.95)),
-            Skill(value="YOLO", confidence=Confidence(score=0.95)),
-            Skill(value="Spring Boot", confidence=Confidence(score=0.9)),
+            Skill(value="python", confidence=Confidence(score=0.95)),
+            Skill(value="springboot", confidence=Confidence(score=0.9)),
         ],
-        global_confidence=Confidence(score=0.93, reason="Strong identity and profile matches"),
+        global_confidence=Confidence(score=0.93),
         metadata={
-            "phase": "2",
-            "description": "CandidateFragment parser architecture added",
+            "phase": "4",
+            "description": "Merge engine added",
         },
     )
 
@@ -156,11 +161,6 @@ def run(
     config_path: Optional[Path] = typer.Option(None, help="Optional custom output config"),
     output_path: Path = typer.Option(DEFAULT_OUTPUT_PATH, help="Output JSON file path"),
 ):
-    """
-    Phase 2 pipeline:
-    Raw files -> CandidateFragment list -> temporary CandidateProfile.
-    """
-
     console.print("[blue]Starting Candidate Transformer Pipeline...[/blue]")
 
     if not input_dir.exists():
@@ -175,39 +175,18 @@ def run(
             config_data = json.load(f)
 
     parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+
     fragments = parser_service.parse_input_directory(input_dir)
 
     if not fragments:
         raise typer.BadParameter("No supported input files found.")
 
-    primary_fragment = fragments[0]
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
 
-    all_emails = []
-    all_phones = []
-    all_skills = []
-
-    for fragment in fragments:
-        all_emails.extend(fragment.emails)
-        all_phones.extend(fragment.phones)
-        all_skills.extend(fragment.skills)
-
-    candidate = CandidateProfile(
-        candidate_id=primary_fragment.candidate_id,
-        full_name=primary_fragment.full_name,
-        emails=all_emails,
-        phones=all_phones,
-        current_company=primary_fragment.current_company,
-        current_title=primary_fragment.current_title,
-        skills=all_skills,
-        global_confidence=Confidence(score=0.80, reason="Temporary profile built from parsed fragments"),
-        metadata={
-            "status": "phase_2_success",
-            "fragments_parsed": len(fragments),
-            "sources": [fragment.source.value for fragment in fragments],
-            "custom_config_loaded": config_data is not None,
-            "next_phase": "Normalization engine for phones, skills, dates, duplicates",
-        },
-    )
+    candidate.metadata["custom_config_loaded"] = config_data is not None
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -217,15 +196,16 @@ def run(
     console.print("[green]Pipeline completed successfully.[/green]")
     console.print(f"Output written to: {output_path}")
 
-    table = Table(title="Phase 2 Parser Summary")
+    table = Table(title="Phase 4 Merge Summary")
     table.add_column("Metric")
     table.add_column("Value")
 
     table.add_row("Fragments Parsed", str(len(fragments)))
-    table.add_row("Sources", ", ".join(fragment.source.value for fragment in fragments))
-    table.add_row("Emails Extracted", str(len(all_emails)))
-    table.add_row("Phones Extracted", str(len(all_phones)))
-    table.add_row("Skills Extracted", str(len(all_skills)))
+    table.add_row("Fragments Normalized", str(len(normalized_fragments)))
+    table.add_row("Unique Emails", str(len(candidate.emails)))
+    table.add_row("Unique Phones", str(len(candidate.phones)))
+    table.add_row("Unique Skills", str(len(candidate.skills)))
+    table.add_row("Global Confidence", str(candidate.global_confidence.score))
 
     console.print(table)
 
