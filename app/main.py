@@ -16,6 +16,7 @@ from app.models.candidate import (
     Skill,
     SourceType,
 )
+from app.services.parser_service import ParserService
 from app.settings import CONFIG_DIR, DEFAULT_OUTPUT_PATH, INPUT_DIR, OUTPUT_DIR
 from app.validators.candidate_validator import collect_validation_errors
 
@@ -32,11 +33,41 @@ def health():
 
 
 @app.command()
-def sample_model():
+def parse_sources(
+    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
+):
     """
-    Create and print a sample validated CandidateProfile.
+    Parse raw input files into CandidateFragment objects.
     """
 
+    parser_service = ParserService()
+    fragments = parser_service.parse_input_directory(input_dir)
+
+    console.print(f"[green]Parsed {len(fragments)} source fragments successfully.[/green]")
+
+    table = Table(title="Parsed Candidate Fragments")
+    table.add_column("Source")
+    table.add_column("File")
+    table.add_column("Name")
+    table.add_column("Emails")
+    table.add_column("Phones")
+    table.add_column("Skills")
+
+    for fragment in fragments:
+        table.add_row(
+            fragment.source.value,
+            fragment.source_file or "",
+            fragment.full_name.value if fragment.full_name else "",
+            ", ".join(email.value for email in fragment.emails),
+            ", ".join(phone.value for phone in fragment.phones),
+            ", ".join(skill.value for skill in fragment.skills),
+        )
+
+    console.print(table)
+
+
+@app.command()
+def sample_model():
     candidate = CandidateProfile(
         candidate_id="cand_001",
         full_name=FieldValue(
@@ -82,41 +113,17 @@ def sample_model():
                 ],
             )
         ],
-        current_company=FieldValue(
-            value="OralVis Healthcare",
-            confidence=Confidence(score=0.9, reason="Found in multiple structured sources"),
-            provenance=[
-                Provenance(
-                    source=SourceType.ATS_JSON,
-                    source_file="ats.json",
-                    field_path="company",
-                    extraction_method="json_field_mapping",
-                    raw_value="OralVis Healthcare",
-                )
-            ],
-        ),
-        current_title=FieldValue(
-            value="AI Research Intern",
-            confidence=Confidence(score=0.88, reason="Found in recruiter CSV"),
-            provenance=[
-                Provenance(
-                    source=SourceType.RECRUITER_CSV,
-                    source_file="recruiter.csv",
-                    field_path="title",
-                    extraction_method="csv_column_mapping",
-                    raw_value="AI Research Intern",
-                )
-            ],
-        ),
+        current_company=FieldValue(value="OralVis Healthcare"),
+        current_title=FieldValue(value="AI Research Intern"),
         skills=[
-            Skill(value="Python", confidence=Confidence(score=0.95, reason="Detected in ATS skillsText")),
-            Skill(value="YOLO", confidence=Confidence(score=0.95, reason="Detected in ATS skillsText")),
-            Skill(value="Spring Boot", confidence=Confidence(score=0.9, reason="Detected in notes")),
+            Skill(value="Python", confidence=Confidence(score=0.95)),
+            Skill(value="YOLO", confidence=Confidence(score=0.95)),
+            Skill(value="Spring Boot", confidence=Confidence(score=0.9)),
         ],
         global_confidence=Confidence(score=0.93, reason="Strong identity and profile matches"),
         metadata={
-            "phase": "1",
-            "description": "Canonical Pydantic model validation successful",
+            "phase": "2",
+            "description": "CandidateFragment parser architecture added",
         },
     )
 
@@ -125,55 +132,12 @@ def sample_model():
 
 @app.command()
 def validate_sample():
-    """
-    Validate a sample candidate and print validation result.
-    """
-
     candidate_data = {
         "candidate_id": "cand_001",
-        "full_name": {
-            "value": "Saumya Srivastava",
-            "confidence": {
-                "score": 0.98,
-                "reason": "Name found in structured source"
-            },
-            "provenance": [
-                {
-                    "source": "recruiter_csv",
-                    "source_file": "recruiter.csv",
-                    "field_path": "name",
-                    "extraction_method": "csv_column_mapping",
-                    "raw_value": "Saumya Srivastava"
-                }
-            ]
-        },
-        "emails": [
-            {
-                "value": "saumya@example.com",
-                "confidence": {
-                    "score": 0.99,
-                    "reason": "Email from structured source"
-                }
-            }
-        ],
-        "phones": [
-            {
-                "value": "+919876543210",
-                "confidence": {
-                    "score": 0.9,
-                    "reason": "Phone from structured source"
-                }
-            }
-        ],
-        "skills": [
-            {
-                "value": "Python",
-                "confidence": {
-                    "score": 0.95,
-                    "reason": "Skill from ATS"
-                }
-            }
-        ]
+        "full_name": {"value": "Saumya Srivastava"},
+        "emails": [{"value": "saumya@example.com"}],
+        "phones": [{"value": "+919876543210"}],
+        "skills": [{"value": "Python"}],
     }
 
     errors = collect_validation_errors(candidate_data)
@@ -193,15 +157,14 @@ def run(
     output_path: Path = typer.Option(DEFAULT_OUTPUT_PATH, help="Output JSON file path"),
 ):
     """
-    Phase 1 dummy pipeline with canonical validated candidate profile.
+    Phase 2 pipeline:
+    Raw files -> CandidateFragment list -> temporary CandidateProfile.
     """
 
     console.print("[blue]Starting Candidate Transformer Pipeline...[/blue]")
 
     if not input_dir.exists():
         raise typer.BadParameter(f"Input directory does not exist: {input_dir}")
-
-    files = list(input_dir.iterdir())
 
     config_data = None
     if config_path:
@@ -211,44 +174,38 @@ def run(
         with open(config_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
 
+    parser_service = ParserService()
+    fragments = parser_service.parse_input_directory(input_dir)
+
+    if not fragments:
+        raise typer.BadParameter("No supported input files found.")
+
+    primary_fragment = fragments[0]
+
+    all_emails = []
+    all_phones = []
+    all_skills = []
+
+    for fragment in fragments:
+        all_emails.extend(fragment.emails)
+        all_phones.extend(fragment.phones)
+        all_skills.extend(fragment.skills)
+
     candidate = CandidateProfile(
-        candidate_id="cand_001",
-        full_name=FieldValue(
-            value="Saumya Srivastava",
-            confidence=Confidence(score=0.98, reason="Sample Phase 1 validated name"),
-            provenance=[
-                Provenance(
-                    source=SourceType.RECRUITER_CSV,
-                    source_file="recruiter.csv",
-                    field_path="name",
-                    extraction_method="sample_phase_1_mapping",
-                    raw_value="Saumya Srivastava",
-                )
-            ],
-        ),
-        emails=[
-            Email(
-                value="saumya@example.com",
-                confidence=Confidence(score=0.99, reason="Sample Phase 1 email"),
-            )
-        ],
-        phones=[
-            Phone(
-                value="+919876543210",
-                confidence=Confidence(score=0.9, reason="Sample Phase 1 phone"),
-            )
-        ],
-        skills=[
-            Skill(value="Python", confidence=Confidence(score=0.95)),
-            Skill(value="YOLO", confidence=Confidence(score=0.95)),
-            Skill(value="Spring Boot", confidence=Confidence(score=0.9)),
-        ],
-        global_confidence=Confidence(score=0.93),
+        candidate_id=primary_fragment.candidate_id,
+        full_name=primary_fragment.full_name,
+        emails=all_emails,
+        phones=all_phones,
+        current_company=primary_fragment.current_company,
+        current_title=primary_fragment.current_title,
+        skills=all_skills,
+        global_confidence=Confidence(score=0.80, reason="Temporary profile built from parsed fragments"),
         metadata={
-            "status": "phase_1_success",
-            "input_files_detected": [file.name for file in files],
+            "status": "phase_2_success",
+            "fragments_parsed": len(fragments),
+            "sources": [fragment.source.value for fragment in fragments],
             "custom_config_loaded": config_data is not None,
-            "next_phase": "Parsers for CSV, ATS JSON, notes, resume, and GitHub",
+            "next_phase": "Normalization engine for phones, skills, dates, duplicates",
         },
     )
 
@@ -260,16 +217,15 @@ def run(
     console.print("[green]Pipeline completed successfully.[/green]")
     console.print(f"Output written to: {output_path}")
 
-    table = Table(title="Phase 1 Candidate Summary")
-    table.add_column("Field")
+    table = Table(title="Phase 2 Parser Summary")
+    table.add_column("Metric")
     table.add_column("Value")
 
-    table.add_row("Candidate ID", candidate.candidate_id or "")
-    table.add_row("Name", candidate.full_name.value if candidate.full_name else "")
-    table.add_row("Primary Email", candidate.emails[0].value if candidate.emails else "")
-    table.add_row("Primary Phone", candidate.phones[0].value if candidate.phones else "")
-    table.add_row("Skills", ", ".join(skill.value for skill in candidate.skills))
-    table.add_row("Global Confidence", str(candidate.global_confidence.score))
+    table.add_row("Fragments Parsed", str(len(fragments)))
+    table.add_row("Sources", ", ".join(fragment.source.value for fragment in fragments))
+    table.add_row("Emails Extracted", str(len(all_emails)))
+    table.add_row("Phones Extracted", str(len(all_phones)))
+    table.add_row("Skills Extracted", str(len(all_skills)))
 
     console.print(table)
 

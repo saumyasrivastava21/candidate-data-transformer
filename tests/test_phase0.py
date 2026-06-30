@@ -1,11 +1,14 @@
 from app.models.candidate import (
+    CandidateFragment,
     CandidateProfile,
     Confidence,
     Email,
     FieldValue,
     Phone,
     Skill,
+    SourceType,
 )
+from app.services.parser_service import ParserService
 from app.settings import CONFIG_DIR, INPUT_DIR, OUTPUT_DIR
 
 
@@ -46,3 +49,28 @@ def test_email_validation_fails():
         assert False
     except ValueError:
         assert True
+
+
+def test_candidate_fragment_model():
+    fragment = CandidateFragment(
+        source=SourceType.RECRUITER_CSV,
+        source_file="recruiter.csv",
+        full_name=FieldValue(value="Saumya Srivastava"),
+        emails=[Email(value="saumya@example.com")],
+    )
+
+    assert fragment.source == SourceType.RECRUITER_CSV
+    assert fragment.full_name.value == "Saumya Srivastava"
+
+
+def test_parser_service_parses_inputs():
+    service = ParserService()
+    fragments = service.parse_input_directory(INPUT_DIR)
+
+    assert len(fragments) == 3
+
+    sources = [fragment.source for fragment in fragments]
+
+    assert SourceType.RECRUITER_CSV in sources
+    assert SourceType.ATS_JSON in sources
+    assert SourceType.NOTES in sources

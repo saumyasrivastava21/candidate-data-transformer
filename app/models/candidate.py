@@ -89,6 +89,29 @@ class Links(BaseModel):
     portfolio: Optional[HttpUrl] = None
 
 
+class CandidateFragment(BaseModel):
+    """
+    Intermediate parser output.
+
+    Every parser converts raw source data into CandidateFragment.
+    Later phases will normalize and merge multiple fragments into CandidateProfile.
+    """
+
+    source: SourceType
+    source_file: Optional[str] = None
+
+    candidate_id: Optional[str] = None
+    full_name: Optional[FieldValue] = None
+    emails: List[Email] = Field(default_factory=list)
+    phones: List[Phone] = Field(default_factory=list)
+
+    current_company: Optional[FieldValue] = None
+    current_title: Optional[FieldValue] = None
+    skills: List[Skill] = Field(default_factory=list)
+
+    raw_payload: Dict[str, Any] = Field(default_factory=dict)
+
+
 class CandidateProfile(BaseModel):
     candidate_id: Optional[str] = None
 
