@@ -13,6 +13,24 @@ This project transforms heterogeneous candidate data into **one clean, canonical
 The pipeline is deterministic, explainable, configurable at runtime, and robust to missing or malformed inputs.
 
 ---
+---
+## Demo
+
+Suggested commands for demo:
+
+```bash
+python -m app.main health
+python -m app.main run
+python -m app.main run --config-path data/configs/full_config.json
+python -m app.main validate-output --config-path data/configs/full_config.json
+pytest
+```
+
+- 📹 Demo Video: https://drive.google.com/file/d/1c0lN_JighrJGTVQBFT7RwAC2E87jmoWP/view?usp=sharing
+- 🧪 Test Results: tests/
+- 🚀 Sample Outputs: sample_outputs/
+
+---
 
 ## Key Capabilities
 
@@ -1154,39 +1172,7 @@ Expected filename format:
 ```text
 SaumyaSrivastava_saumyasriv21@gmail.com_Eightfold.pdf
 ```
-
 ---
-
-## Demo Video
-
-The demo video should show:
-
-1. Running the pipeline end-to-end
-2. Showing the default output
-3. Showing one custom config output
-4. Explaining one design decision
-5. Explaining one handled edge case
-
-Suggested commands for demo:
-
-```bash
-python -m app.main health
-python -m app.main run
-python -m app.main run --config-path data/configs/full_config.json
-python -m app.main validate-output --config-path data/configs/full_config.json
-pytest
-```
-
----
-
-## Demo
-
-- 📹 Demo Video: https://drive.google.com/file/d/1c0lN_JighrJGTVQBFT7RwAC2E87jmoWP/view?usp=sharing
-- 🧪 Test Results: tests/
-- 🚀 Sample Outputs: sample_outputs/
-
----
-
 ## Author
 
 **Saumya Srivastava**
