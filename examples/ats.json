@@ -1,0 +1,9 @@
+{
+  "candidateId": "cand_001",
+  "candidateName": "Saumya Srivastava",
+  "mail": "saumya@example.com",
+  "mobile": "9876543210",
+  "company": "OralVis Healthcare",
+  "jobTitle": "Machine Learning Engineer Intern",
+  "skillsText": "Python, YOLO, Computer Vision, FastAPI, Spring Boot"
+}

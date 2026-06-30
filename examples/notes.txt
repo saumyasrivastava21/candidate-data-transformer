@@ -1,0 +1,4 @@
+Candidate has strong experience in computer vision and healthcare AI.
+Worked on YOLO-based dental disease detection.
+Good Java and Spring Boot backend knowledge.
+Strong DSA profile with 500+ problems solved.

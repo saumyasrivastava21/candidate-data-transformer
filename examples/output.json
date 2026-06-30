@@ -1,0 +1,15 @@
+{
+  "full_name": "Saumya Srivastava",
+  "primary_email": "saumya@example.com",
+  "phone": "+919876543210",
+  "skills": [
+    "Python",
+    "YOLO",
+    "Computer Vision",
+    "FastAPI",
+    "Spring Boot",
+    "Java",
+    "Healthcare AI",
+    "DSA"
+  ]
+}
