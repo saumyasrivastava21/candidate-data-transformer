@@ -1,0 +1,6 @@
+typer
+rich
+pandas
+pydantic
+python-dotenv
+pytest
