@@ -10,6 +10,7 @@ from app.models.candidate import CandidateProfile, Confidence, Email, FieldValue
 from app.services.merge_service import MergeService
 from app.services.normalization_service import NormalizationService
 from app.services.parser_service import ParserService
+from app.services.projection_service import ProjectionService
 from app.settings import CONFIG_DIR, DEFAULT_OUTPUT_PATH, INPUT_DIR, OUTPUT_DIR
 from app.validators.candidate_validator import collect_validation_errors
 
@@ -115,6 +116,29 @@ def merge_sources(
 
 
 @app.command()
+def project_sources(
+    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
+    config_path: Path = typer.Option(CONFIG_DIR / "custom_config.json", help="Custom output config"),
+):
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+    projection_service = ProjectionService()
+
+    fragments = parser_service.parse_input_directory(input_dir)
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config_data = json.load(f)
+
+    projected = projection_service.project(candidate, config_data)
+
+    console.print("[green]Projected output generated successfully.[/green]")
+    console.print_json(json.dumps(projected, indent=2))
+
+
+@app.command()
 def sample_model():
     candidate = CandidateProfile(
         candidate_id="cand_001",
@@ -127,8 +151,8 @@ def sample_model():
         ],
         global_confidence=Confidence(score=0.93),
         metadata={
-            "phase": "4",
-            "description": "Merge engine added",
+            "phase": "5",
+            "description": "Configurable projection added",
         },
     )
 
@@ -177,6 +201,7 @@ def run(
     parser_service = ParserService()
     normalization_service = NormalizationService()
     merge_service = MergeService()
+    projection_service = ProjectionService()
 
     fragments = parser_service.parse_input_directory(input_dir)
 
@@ -186,17 +211,20 @@ def run(
     normalized_fragments = normalization_service.normalize_fragments(fragments)
     candidate = merge_service.merge_fragments(normalized_fragments)
 
-    candidate.metadata["custom_config_loaded"] = config_data is not None
+    if config_data:
+        output_data = projection_service.project(candidate, config_data)
+    else:
+        output_data = projection_service.project(candidate)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(candidate.to_clean_dict(), f, indent=2)
+        json.dump(output_data, f, indent=2)
 
     console.print("[green]Pipeline completed successfully.[/green]")
     console.print(f"Output written to: {output_path}")
 
-    table = Table(title="Phase 4 Merge Summary")
+    table = Table(title="Phase 5 Projection Summary")
     table.add_column("Metric")
     table.add_column("Value")
 
@@ -205,7 +233,7 @@ def run(
     table.add_row("Unique Emails", str(len(candidate.emails)))
     table.add_row("Unique Phones", str(len(candidate.phones)))
     table.add_row("Unique Skills", str(len(candidate.skills)))
-    table.add_row("Global Confidence", str(candidate.global_confidence.score))
+    table.add_row("Custom Config Used", str(config_data is not None))
 
     console.print(table)
 

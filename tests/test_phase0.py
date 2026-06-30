@@ -14,6 +14,7 @@ from app.normalizers.skill_normalizer import normalize_skill
 from app.services.merge_service import MergeService
 from app.services.normalization_service import NormalizationService
 from app.services.parser_service import ParserService
+from app.services.projection_service import ProjectionService
 from app.settings import CONFIG_DIR, INPUT_DIR, OUTPUT_DIR
 
 
@@ -150,3 +151,92 @@ def test_merge_service_selects_highest_confidence_name():
     candidate = merge_service.merge_fragments([low, high])
 
     assert candidate.full_name.value == "Saumya Srivastava"
+
+
+def test_projection_service_default_output():
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+    projection_service = ProjectionService()
+
+    fragments = parser_service.parse_input_directory(INPUT_DIR)
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
+
+    output = projection_service.project(candidate)
+
+    assert "full_name" in output
+    assert "emails" in output
+    assert "phones" in output
+
+
+def test_projection_service_custom_config():
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+    projection_service = ProjectionService()
+
+    fragments = parser_service.parse_input_directory(INPUT_DIR)
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
+
+    config = {
+        "fields": [
+            {
+                "path": "full_name",
+                "type": "string",
+                "required": True,
+            },
+            {
+                "path": "primary_email",
+                "from": "emails[0]",
+                "type": "string",
+                "required": True,
+            },
+            {
+                "path": "phone",
+                "from": "phones[0]",
+                "type": "string",
+            },
+            {
+                "path": "skills",
+                "from": "skills[].name",
+                "type": "string[]",
+            },
+        ],
+        "include_confidence": False,
+        "include_provenance": False,
+        "on_missing": "null",
+    }
+
+    output = projection_service.project(candidate, config)
+
+    assert output["full_name"] == "Saumya Srivastava"
+    assert output["primary_email"] == "saumya@example.com"
+    assert output["phone"] == "+919876543210"
+    assert "Spring Boot" in output["skills"]
+    assert "emails" not in output
+
+
+def test_projection_service_missing_null():
+    candidate = CandidateProfile(
+        candidate_id="cand_001",
+        full_name=FieldValue(value="Saumya Srivastava"),
+        emails=[Email(value="saumya@example.com")],
+    )
+
+    projection_service = ProjectionService()
+
+    config = {
+        "fields": [
+            {
+                "path": "missing_field",
+                "type": "string",
+            }
+        ],
+        "on_missing": "null",
+    }
+
+    output = projection_service.project(candidate, config)
+
+    assert output["missing_field"] is None
