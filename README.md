@@ -48,37 +48,72 @@ This satisfies the requirement to handle at least one structured source and one 
 ## Architecture
 
 ```text
-                     Input Sources
-                           |
-       ------------------------------------------------
-       |                      |                       |
- Recruiter CSV            ATS JSON              Notes TXT
-       |                      |                       |
-       ---------------- ParserService ----------------
-                           |
-                           v
-                  CandidateFragment[]
-                           |
-                           v
-                 NormalizationService
-                           |
-                           v
-             Normalized CandidateFragment[]
-                           |
-                           v
-                      MergeService
-                           |
-                           v
-                    CandidateProfile
-                           |
-                           v
-                   ProjectionService
-                           |
-                           v
-                    OutputValidator
-                           |
-                           v
-                 Final Canonical JSON
+                              ┌────────────────────────────┐
+                              │       Input Sources        │
+                              └─────────────┬──────────────┘
+                                            │
+          ┌─────────────────────────────────┼─────────────────────────────────┐
+          │                                 │                                 │
+          ▼                                 ▼                                 ▼
+┌──────────────────┐             ┌──────────────────┐              ┌──────────────────┐
+│  Recruiter CSV   │             │     ATS JSON     │              │   Notes TXT      │
+│  Structured Data │             │ Structured Data  │              │ Unstructured     │
+└────────┬─────────┘             └────────┬─────────┘              └────────┬─────────┘
+         │                                │                                  │
+         └────────────────────────────────┼──────────────────────────────────┘
+                                          ▼
+                              ┌──────────────────────┐
+                              │    ParserService     │
+                              │  source-specific     │
+                              │  extraction layer    │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │ CandidateFragment[]  │
+                              │ intermediate records │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │ NormalizationService │
+                              │ email, phone, skill, │
+                              │ name, company, title │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │     MergeService     │
+                              │ dedupe + conflict    │
+                              │ resolution policy    │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │   CandidateProfile   │
+                              │ canonical internal   │
+                              │ profile with source  │
+                              │ provenance           │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │  ConfidenceService   │
+                              │ field-level + global │
+                              │ confidence scoring   │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │  ProjectionService   │
+                              │ runtime configurable │
+                              │ output schema        │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │   OutputValidator    │
+                              │ required fields and  │
+                              │ type validation      │
+                              └──────────┬───────────┘
+                                         ▼
+                              ┌──────────────────────┐
+                              │ Final Canonical JSON │
+                              │ validated output     │
+                              └──────────────────────┘
 ```
 
 ---
@@ -86,22 +121,61 @@ This satisfies the requirement to handle at least one structured source and one 
 ## Pipeline
 
 ```text
-detect sources
-    ↓
-extract
-    ↓
-normalize
-    ↓
-merge
-    ↓
-confidence
-    ↓
-project-to-output
-    ↓
-validate
-    ↓
-emit JSON
+1. Detect Sources
+   Locate supported candidate input files from the input directory.
+
+2. Extract
+   Parse each source independently and convert it into CandidateFragment.
+
+3. Normalize
+   Standardize values such as emails, phone numbers, skills, names, companies, and titles.
+
+4. Merge
+   Deduplicate repeated values and resolve conflicting fields using confidence-based rules.
+
+5. Assign Confidence
+   Attach field-level confidence and compute an overall profile confidence score.
+
+6. Track Provenance
+   Preserve source file, source type, extraction method, field path, and raw value for traceability.
+
+7. Project Output
+   Apply runtime config to select, rename, reshape, and control output fields without code changes.
+
+8. Validate
+   Verify required fields and expected data types before writing the final JSON.
+
+9. Emit JSON
+   Save the final canonical candidate profile to the output directory.
 ```
+
+---
+
+## End-to-End Flow
+
+```text
+Recruiter CSV + ATS JSON + Notes TXT
+        ↓
+Source-specific parsers
+        ↓
+CandidateFragment[]
+        ↓
+Normalization
+        ↓
+Merge + Conflict Resolution
+        ↓
+CandidateProfile
+        ↓
+Confidence + Provenance
+        ↓
+Runtime Output Projection
+        ↓
+Output Validation
+        ↓
+Final Canonical JSON
+```
+
+---
 
 Each step has a separate responsibility.
 
