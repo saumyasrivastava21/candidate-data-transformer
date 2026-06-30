@@ -13,9 +13,26 @@ from app.services.parser_service import ParserService
 from app.services.projection_service import ProjectionService
 from app.settings import CONFIG_DIR, DEFAULT_OUTPUT_PATH, INPUT_DIR, OUTPUT_DIR
 from app.validators.candidate_validator import collect_validation_errors
+from app.validators.output_validator import OutputValidator, OutputValidationError
 
 app = typer.Typer(help="Multi-Source Candidate Data Transformer CLI")
 console = Console()
+
+
+def build_candidate(input_dir: Path):
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+
+    fragments = parser_service.parse_input_directory(input_dir)
+
+    if not fragments:
+        raise typer.BadParameter("No supported input files found.")
+
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
+
+    return candidate, fragments, normalized_fragments
 
 
 @app.command()
@@ -27,9 +44,7 @@ def health():
 
 
 @app.command()
-def parse_sources(
-    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
-):
+def parse_sources(input_dir: Path = typer.Option(INPUT_DIR)):
     parser_service = ParserService()
     fragments = parser_service.parse_input_directory(input_dir)
 
@@ -57,9 +72,7 @@ def parse_sources(
 
 
 @app.command()
-def normalize_sources(
-    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
-):
+def normalize_sources(input_dir: Path = typer.Option(INPUT_DIR)):
     parser_service = ParserService()
     normalization_service = NormalizationService()
 
@@ -86,16 +99,8 @@ def normalize_sources(
 
 
 @app.command()
-def merge_sources(
-    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
-):
-    parser_service = ParserService()
-    normalization_service = NormalizationService()
-    merge_service = MergeService()
-
-    fragments = parser_service.parse_input_directory(input_dir)
-    normalized_fragments = normalization_service.normalize_fragments(fragments)
-    candidate = merge_service.merge_fragments(normalized_fragments)
+def merge_sources(input_dir: Path = typer.Option(INPUT_DIR)):
+    candidate, _, _ = build_candidate(input_dir)
 
     console.print("[green]Sources parsed, normalized, and merged successfully.[/green]")
 
@@ -117,24 +122,21 @@ def merge_sources(
 
 @app.command()
 def project_sources(
-    input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
-    config_path: Path = typer.Option(CONFIG_DIR / "custom_config.json", help="Custom output config"),
+    input_dir: Path = typer.Option(INPUT_DIR),
+    config_path: Path = typer.Option(CONFIG_DIR / "custom_config.json"),
 ):
-    parser_service = ParserService()
-    normalization_service = NormalizationService()
-    merge_service = MergeService()
-    projection_service = ProjectionService()
-
-    fragments = parser_service.parse_input_directory(input_dir)
-    normalized_fragments = normalization_service.normalize_fragments(fragments)
-    candidate = merge_service.merge_fragments(normalized_fragments)
+    candidate, _, _ = build_candidate(input_dir)
 
     with open(config_path, "r", encoding="utf-8") as f:
         config_data = json.load(f)
 
-    projected = projection_service.project(candidate, config_data)
+    projection_service = ProjectionService()
+    output_validator = OutputValidator()
 
-    console.print("[green]Projected output generated successfully.[/green]")
+    projected = projection_service.project(candidate, config_data)
+    output_validator.validate_or_raise(projected, config_data)
+
+    console.print("[green]Projected output generated and validated successfully.[/green]")
     console.print_json(json.dumps(projected, indent=2))
 
 
@@ -151,8 +153,8 @@ def sample_model():
         ],
         global_confidence=Confidence(score=0.93),
         metadata={
-            "phase": "5",
-            "description": "Configurable projection added",
+            "phase": "6",
+            "description": "Output validation added",
         },
     )
 
@@ -180,6 +182,32 @@ def validate_sample():
 
 
 @app.command()
+def validate_output(
+    config_path: Path = typer.Option(CONFIG_DIR / "custom_config.json"),
+    output_path: Path = typer.Option(DEFAULT_OUTPUT_PATH),
+):
+    if not output_path.exists():
+        raise typer.BadParameter(f"Output file does not exist: {output_path}")
+
+    with open(output_path, "r", encoding="utf-8") as f:
+        output_data = json.load(f)
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config_data = json.load(f)
+
+    validator = OutputValidator()
+    errors = validator.validate(output_data, config_data)
+
+    if errors:
+        console.print("[red]Output validation failed[/red]")
+        for error in errors:
+            console.print(f"- {error}")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Output validation successful.[/green]")
+
+
+@app.command()
 def run(
     input_dir: Path = typer.Option(INPUT_DIR, help="Directory containing source files"),
     config_path: Optional[Path] = typer.Option(None, help="Optional custom output config"),
@@ -198,33 +226,23 @@ def run(
         with open(config_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
 
-    parser_service = ParserService()
-    normalization_service = NormalizationService()
-    merge_service = MergeService()
     projection_service = ProjectionService()
+    output_validator = OutputValidator()
 
-    fragments = parser_service.parse_input_directory(input_dir)
+    candidate, fragments, normalized_fragments = build_candidate(input_dir)
 
-    if not fragments:
-        raise typer.BadParameter("No supported input files found.")
-
-    normalized_fragments = normalization_service.normalize_fragments(fragments)
-    candidate = merge_service.merge_fragments(normalized_fragments)
-
-    if config_data:
-        output_data = projection_service.project(candidate, config_data)
-    else:
-        output_data = projection_service.project(candidate)
+    output_data = projection_service.project(candidate, config_data)
+    output_validator.validate_or_raise(output_data, config_data)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output_data, f, indent=2)
 
-    console.print("[green]Pipeline completed successfully.[/green]")
+    console.print("[green]Pipeline completed and output validated successfully.[/green]")
     console.print(f"Output written to: {output_path}")
 
-    table = Table(title="Phase 5 Projection Summary")
+    table = Table(title="Phase 6 Validation Summary")
     table.add_column("Metric")
     table.add_column("Value")
 
@@ -234,6 +252,7 @@ def run(
     table.add_row("Unique Phones", str(len(candidate.phones)))
     table.add_row("Unique Skills", str(len(candidate.skills)))
     table.add_row("Custom Config Used", str(config_data is not None))
+    table.add_row("Output Validation", "Passed")
 
     console.print(table)
 

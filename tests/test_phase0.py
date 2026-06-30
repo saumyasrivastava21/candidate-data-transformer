@@ -16,7 +16,8 @@ from app.services.normalization_service import NormalizationService
 from app.services.parser_service import ParserService
 from app.services.projection_service import ProjectionService
 from app.settings import CONFIG_DIR, INPUT_DIR, OUTPUT_DIR
-
+from app.services.projection_service import ProjectionService
+from app.validators.output_validator import OutputValidator, OutputValidationError
 
 def test_directories_exist():
     assert INPUT_DIR.exists()
@@ -240,3 +241,67 @@ def test_projection_service_missing_null():
     output = projection_service.project(candidate, config)
 
     assert output["missing_field"] is None
+
+def test_output_validator_valid_custom_output():
+    parser_service = ParserService()
+    normalization_service = NormalizationService()
+    merge_service = MergeService()
+    projection_service = ProjectionService()
+    output_validator = OutputValidator()
+
+    fragments = parser_service.parse_input_directory(INPUT_DIR)
+    normalized_fragments = normalization_service.normalize_fragments(fragments)
+    candidate = merge_service.merge_fragments(normalized_fragments)
+
+    config = {
+        "fields": [
+            {"path": "full_name", "type": "string", "required": True},
+            {"path": "primary_email", "from": "emails[0]", "type": "string", "required": True},
+            {"path": "phone", "from": "phones[0]", "type": "string"},
+            {"path": "skills", "from": "skills[].name", "type": "string[]"},
+        ],
+        "include_confidence": False,
+        "include_provenance": False,
+        "on_missing": "null",
+    }
+
+    output = projection_service.project(candidate, config)
+    errors = output_validator.validate(output, config)
+
+    assert errors == []
+
+
+def test_output_validator_detects_type_error():
+    output_validator = OutputValidator()
+
+    output = {
+        "full_name": ["wrong", "type"]
+    }
+
+    config = {
+        "fields": [
+            {"path": "full_name", "type": "string", "required": True}
+        ]
+    }
+
+    errors = output_validator.validate(output, config)
+
+    assert len(errors) == 1
+    assert "must be string" in errors[0]
+
+
+def test_output_validator_required_field_missing():
+    output_validator = OutputValidator()
+
+    output = {}
+
+    config = {
+        "fields": [
+            {"path": "full_name", "type": "string", "required": True}
+        ]
+    }
+
+    errors = output_validator.validate(output, config)
+
+    assert len(errors) == 1
+    assert "Required field missing" in errors[0]
